@@ -1,3 +1,6 @@
+"""
+main.py — Locked In production entry point.
+"""
 import cv2
 import time
 from collections import deque
@@ -15,7 +18,7 @@ from attention_core import (
 )
 from ui_app import render_app_ui
 
-WINDOW_TITLE = "Locked In"
+WINDOW_TITLE    = "Locked In"
 DRAW_FACE_DEBUG = False
 
 
@@ -27,17 +30,13 @@ def main():
 
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-    phone_model = create_phone_model()
+    phone_model    = create_phone_model()
     face_extractor = FaceFeatureExtractor()
     pose_extractor = PoseFeatureExtractor()
-    state_machine = AttentionStateMachine()
-
-    fps_buf = deque(maxlen=30)
-    last_time = time.time()
+    state_machine  = AttentionStateMachine()
 
     last_phone_seen_time = 0.0
-    last_phone_conf = 0.0
-    last_phone_box = None
+    last_phone_box       = None
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -45,43 +44,45 @@ def main():
             break
 
         frame = cv2.flip(frame, 1)
-        now = time.time()
+        now   = time.time()
 
-        fps_buf.append(1.0 / max(now - last_time, 1e-6))
-        last_time = now
-
-        phone_detected_now, phone_conf_now, phone_box_now = detect_phone(
+        # ── phone detection ───────────────────────────────────────────────────
+        phone_detected_now, _, phone_box_now = detect_phone(
             phone_model, frame, PHONE_CONF_THRESHOLD
         )
-
         if phone_detected_now:
             last_phone_seen_time = now
-            last_phone_conf = phone_conf_now
-            last_phone_box = phone_box_now
+            last_phone_box       = phone_box_now
 
         phone_active = (now - last_phone_seen_time) <= PHONE_OVERRIDE_STICKY_SEC
 
+        # ── feature extraction ────────────────────────────────────────────────
         face_data = face_extractor.process(frame)
         pose_data = pose_extractor.process(frame)
 
         if DRAW_FACE_DEBUG:
             frame = face_extractor.draw_debug(frame, face_data)
 
+        # ── classification ────────────────────────────────────────────────────
         raw_state = classify_state(pose_data, face_data)
-        status = state_machine.update(raw_state, now, hard_off=phone_active)
+        status    = state_machine.update(raw_state, now, hard_off=phone_active)
+        reasons   = build_reasons(raw_state, pose_data, face_data, phone_active)
 
-        reasons = build_reasons(raw_state, pose_data, face_data, phone_active)
-
+        # ── render ────────────────────────────────────────────────────────────
         frame = render_app_ui(
-            frame=frame,
-            status=status,
-            reasons=reasons,
-            phone_active=phone_active,
-            phone_box=last_phone_box if phone_active else None,
+            frame            = frame,
+            status           = status,
+            reasons          = reasons,
+            attention_score  = state_machine.attention_score,
+            session_elapsed  = state_machine.session_elapsed,
+            locked_in_seconds = state_machine.locked_in_seconds,
+            current_streak   = state_machine.current_streak,
+            longest_streak   = state_machine.longest_streak_sec,
+            phone_active     = phone_active,
+            phone_box        = last_phone_box if phone_active else None,
         )
 
         cv2.imshow(WINDOW_TITLE, frame)
-
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
