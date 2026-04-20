@@ -129,6 +129,20 @@ class AttentionStateMachine:
         self.current_streak_start = None   # when the current streak began
         self.longest_streak_sec   = 0.0
 
+    def reset(self) -> None:
+        """Reset all session-level counters. Call when starting a new session."""
+        now = time.time()
+        self.status               = "LOCKED OUT"
+        self.vote_score           = 0
+        self.candidate            = None
+        self.candidate_since      = None
+        self.last_not_locked_time = 0.0
+        self.session_start        = now
+        self.locked_in_seconds    = 0.0
+        self.last_update_time     = now
+        self.current_streak_start = None
+        self.longest_streak_sec   = 0.0
+
     # ── helpers ───────────────────────────────────────────────────────────────
 
     @property
